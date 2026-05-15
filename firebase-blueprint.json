@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Basic information about the patient or caregiver.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["patient", "caregiver"] },
+        "diagnosisDate": { "type": "string", "format": "date" },
+        "stage": { "type": "string" },
+        "oncologistName": { "type": "string" },
+        "clinicPhone": { "type": "string" },
+        "emergencyInstructions": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Symptom": {
+      "title": "Symptom Log",
+      "description": "A record of a symptom experienced by the patient.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "type": { "type": "string", "enum": ["cough", "shortness_of_breath", "chest_pain", "fatigue", "weight_loss", "other"] },
+        "severity": { "type": "number", "description": "1 to 10 scale" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["uid", "type", "severity", "timestamp"]
+    },
+    "Treatment": {
+      "title": "Treatment Record",
+      "description": "Medications or appointments for the patient.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["medication", "appointment", "therapy"] },
+        "date": { "type": "string", "format": "date-time" },
+        "completed": { "type": "boolean" },
+        "notes": { "type": "string" }
+      },
+      "required": ["uid", "title", "type", "date"]
+    },
+    "MedicalDocument": {
+      "title": "Medical Document",
+      "description": "Scans, X-rays, or lab reports uploaded by the user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["scan", "xray", "lab_report", "prescription", "other"] },
+        "date": { "type": "string", "format": "date" },
+        "fileUrl": { "type": "string", "description": "URL to the stored file" },
+        "notes": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "title", "type", "date"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message in the AI Assistant chat history.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "text": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "ai"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "text", "sender", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/symptoms/{symptomId}": {
+      "schema": "Symptom",
+      "description": "Symptom log entries."
+    },
+    "/treatments/{treatmentId}": {
+      "schema": "Treatment",
+      "description": "Treatment and medication records."
+    },
+    "/vitals/{vitalId}": {
+      "schema": "VitalSign",
+      "description": "User vital signs (SpO2, weight, heart rate)."
+    },
+    "/invitations/{invitationId}": {
+      "schema": "CaregiverInvitation",
+      "description": "Caregiver invitations for shared access."
+    },
+    "/medical_documents/{docId}": {
+      "schema": "MedicalDocument",
+      "description": "Uploaded medical reports and scans."
+    },
+    "/chat_messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "AI Assistant chat history."
+    }
+  }
+}

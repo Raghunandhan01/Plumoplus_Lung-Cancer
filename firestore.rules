@@ -1,0 +1,202 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required) - User's unique ID
+//   - displayName: string (optional) - User's name
+//   - email: string (required) - User's email
+//   - role: string (required, enum: ['patient', 'caregiver']) - User's role
+//   - diagnosisDate: string (optional, ISO 8601) - Date of diagnosis
+//   - stage: string (optional) - Cancer stage
+//
+// Collection: symptoms
+// Document ID: {symptomId}
+// Fields:
+//   - uid: string (required) - Owner's UID
+//   - type: string (required, enum: ['cough', 'shortness_of_breath', 'chest_pain', 'fatigue', 'weight_loss', 'other'])
+//   - severity: number (required, 1-10)
+//   - timestamp: timestamp (required)
+//   - notes: string (optional, max 1000 chars)
+//
+// Collection: treatments
+// Document ID: {treatmentId}
+// Fields:
+//   - uid: string (required) - Owner's UID
+//   - title: string (required, max 100 chars)
+//   - type: string (required, enum: ['medication', 'appointment', 'therapy'])
+//   - date: timestamp (required)
+//   - completed: bool (required)
+//   - notes: string (optional, max 1000 chars)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /chat_messages/{messageId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid && isValidChatMessage(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isNewDocOwner() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.uid;
+    }
+
+    function isCaregiverOf(patientUid) {
+      let invitationId = request.auth.token.email.lower() + "_" + patientUid;
+      return exists(/databases/$(database)/documents/invitations/$(invitationId)) &&
+             get(/databases/$(database)/documents/invitations/$(invitationId)).data.status == 'accepted';
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}.*");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['patient', 'caregiver'] &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('diagnosisDate' in data) || isValidDateString(data.diagnosisDate)) &&
+             (!('stage' in data) || (data.stage is string && data.stage.size() < 50)) &&
+             (!('oncologistName' in data) || (data.oncologistName is string && data.oncologistName.size() < 100)) &&
+             (!('clinicPhone' in data) || (data.clinicPhone is string && data.clinicPhone.size() < 20)) &&
+             (!('emergencyInstructions' in data) || (data.emergencyInstructions is string && data.emergencyInstructions.size() < 1000));
+    }
+
+    function isValidSymptom(data) {
+      return data.keys().hasAll(['uid', 'type', 'severity', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.type in ['cough', 'shortness_of_breath', 'chest_pain', 'fatigue', 'weight_loss', 'other'] &&
+             data.severity is number && data.severity >= 1 && data.severity <= 10 &&
+             data.timestamp is timestamp &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 1000));
+    }
+
+    function isValidTreatment(data) {
+      return data.keys().hasAll(['uid', 'title', 'type', 'date', 'completed']) &&
+             data.uid == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.type in ['medication', 'appointment', 'therapy'] &&
+             data.date is timestamp &&
+             data.completed is bool &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 1000));
+    }
+
+    function isValidVital(data) {
+      return data.keys().hasAll(['uid', 'type', 'value', 'unit', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.type in ['spo2', 'weight', 'heart_rate'] &&
+             data.value is number &&
+             data.unit is string &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidInvitation(data) {
+      return data.keys().hasAll(['patientUid', 'caregiverEmail', 'status', 'createdAt']) &&
+             data.patientUid == request.auth.uid &&
+             isValidEmail(data.caregiverEmail) &&
+             data.status in ['pending', 'accepted', 'declined'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidMedicalDocument(data) {
+      return data.keys().hasAll(['uid', 'title', 'type', 'date', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.type in ['scan', 'xray', 'lab_report', 'prescription', 'other'] &&
+             isValidDateString(data.date) &&
+             data.timestamp is timestamp &&
+             (!('fileUrl' in data) || (data.fileUrl is string && data.fileUrl.size() < 2000)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 2000));
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['uid', 'text', 'sender', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
+             data.sender in ['user', 'ai'] &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /symptoms/{symptomId} {
+      allow read: if isDocOwner() || isCaregiverOf(resource.data.uid);
+      allow create: if isNewDocOwner() && isValidSymptom(request.resource.data);
+      allow update: if (isDocOwner() || isCaregiverOf(resource.data.uid)) && isNewDocOwner() && isValidSymptom(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /treatments/{treatmentId} {
+      allow read: if isDocOwner() || isCaregiverOf(resource.data.uid);
+      allow create: if isNewDocOwner() && isValidTreatment(request.resource.data);
+      allow update: if (isDocOwner() || isCaregiverOf(resource.data.uid)) && isNewDocOwner() && isValidTreatment(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /vitals/{vitalId} {
+      allow read: if isDocOwner() || isCaregiverOf(resource.data.uid);
+      allow create: if isNewDocOwner() && isValidVital(request.resource.data);
+      allow update: if (isDocOwner() || isCaregiverOf(resource.data.uid)) && isNewDocOwner() && isValidVital(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /invitations/{invitationId} {
+      allow read: if isAuthenticated() && (resource.data.patientUid == request.auth.uid || resource.data.caregiverEmail.lower() == request.auth.token.email.lower());
+      allow create: if isAuthenticated() && request.resource.data.patientUid == request.auth.uid && isValidInvitation(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.caregiverEmail.lower() == request.auth.token.email.lower() || resource.data.patientUid == request.auth.uid);
+      allow delete: if isAuthenticated() && resource.data.patientUid == request.auth.uid;
+    }
+
+    match /medical_documents/{docId} {
+      allow read: if isDocOwner() || isCaregiverOf(resource.data.uid);
+      allow create: if isNewDocOwner() && isValidMedicalDocument(request.resource.data);
+      allow update: if (isDocOwner() || isCaregiverOf(resource.data.uid)) && isNewDocOwner() && isValidMedicalDocument(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
